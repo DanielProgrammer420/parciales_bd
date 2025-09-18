@@ -1,0 +1,263 @@
+```sql
+-- ======================================================
+-- SCRIPT DE IMPLEMENTACIÓN FÍSICA - PLAYA DE ESTACIONAMIENTO
+-- Recuperatorio 1er Parcial Bases de Datos I - 2024
+-- Versión FIJA: clave primaria compuesta en 'registro' como en el modelo del profesor
+-- ======================================================
+
+-- 1. TABLA: tipo_vehiculo (Tabla de clasificación)
+CREATE TABLE tipo_vehiculo (
+    id_tipo_vehiculo INT IDENTITY(1,1) PRIMARY KEY,
+    nombre_tipo_vehiculo VARCHAR(50) NOT NULL UNIQUE
+        CONSTRAINT UNQ_nombre_tipo_vehiculo UNIQUE
+);
+GO
+
+-- 2. TABLA: color (Tabla de clasificación)
+CREATE TABLE color (
+    id_color INT IDENTITY(1,1) PRIMARY KEY,
+    nombre_color VARCHAR(50) NOT NULL UNIQUE
+        CONSTRAINT UNQ_nombre_color UNIQUE
+);
+GO
+
+-- 3. TABLA: fraccion_tiempo (Tabla de clasificación: hora, día, semana, mes)
+CREATE TABLE fraccion_tiempo (
+    id_fraccion_tiempo INT IDENTITY(1,1) PRIMARY KEY,
+    nombre_fraccion_tiempo VARCHAR(20) NOT NULL UNIQUE
+        CONSTRAINT UNQ_nombre_fraccion_tiempo UNIQUE
+);
+GO
+
+-- 4. TABLA: nivel (Cada piso del edificio)
+CREATE TABLE nivel (
+    id_nivel INT IDENTITY(1,1) PRIMARY KEY,
+    nombre_nivel VARCHAR(50) NOT NULL -- Ej: "PB", "1er Piso", "Subsuelo 1"
+);
+GO
+
+-- 5. TABLA: lugar (Entidad débil por identificación)
+-- Un lugar se identifica por su número DENTRO de un nivel.
+CREATE TABLE lugar (
+    nro_lugar INT NOT NULL,      -- Puede repetirse en otros niveles
+    id_nivel INT NOT NULL,
+    id_tipo_vehiculo INT NOT NULL, -- Tipo de vehículo permitido en este lugar
+
+    -- Clave primaria compuesta (como en el modelo del profesor)
+    CONSTRAINT PK_lugar PRIMARY KEY (id_nivel, nro_lugar),
+
+    -- Claves foráneas
+    CONSTRAINT FK_lugar_nivel FOREIGN KEY (id_nivel) REFERENCES nivel(id_nivel),
+    CONSTRAINT FK_lugar_tipo_vehiculo FOREIGN KEY (id_tipo_vehiculo) REFERENCES tipo_vehiculo(id_tipo_vehiculo)
+);
+GO
+
+-- 6. TABLA: conductor
+CREATE TABLE conductor (
+    id_conductor INT IDENTITY(1,1) PRIMARY KEY,
+    dni VARCHAR(8) NOT NULL
+        CONSTRAINT CHK_dni_longitud CHECK (LEN(dni) <= 8),
+    nombre VARCHAR(100) NOT NULL,
+    apellido VARCHAR(100) NOT NULL,
+    fecha_nacimiento DATE NOT NULL,
+    direccion VARCHAR(255) NOT NULL,
+    telefono VARCHAR(20) NOT NULL
+        CONSTRAINT UNQ_telefono_conductor UNIQUE
+);
+GO
+
+-- 7. TABLA: vehiculo
+CREATE TABLE vehiculo (
+    patente VARCHAR(10) PRIMARY KEY, -- PK natural, única
+    id_color INT NOT NULL,
+    id_tipo_vehiculo INT NOT NULL,
+
+    -- Claves foráneas
+    CONSTRAINT FK_vehiculo_color FOREIGN KEY (id_color) REFERENCES color(id_color),
+    CONSTRAINT FK_vehiculo_tipo FOREIGN KEY (id_tipo_vehiculo) REFERENCES tipo_vehiculo(id_tipo_vehiculo)
+);
+GO
+
+-- 8. TABLA: vehiculo_conductor (Resuelve M:N entre Conductor y Vehículo)
+CREATE TABLE vehiculo_conductor (
+    id_conductor INT NOT NULL,
+    patente VARCHAR(10) NOT NULL,
+
+    -- Clave primaria compuesta
+    CONSTRAINT PK_vehiculo_conductor PRIMARY KEY (id_conductor, patente),
+
+    -- Claves foráneas
+    CONSTRAINT FK_vc_conductor FOREIGN KEY (id_conductor) REFERENCES conductor(id_conductor) ON DELETE CASCADE,
+    CONSTRAINT FK_vc_vehiculo FOREIGN KEY (patente) REFERENCES vehiculo(patente) ON DELETE CASCADE
+);
+GO
+
+-- 9. TABLA: registro (¡CLAVE PRIMARIA COMPUESTA como en el modelo del profesor!)
+CREATE TABLE registro (
+    patente VARCHAR(10) NOT NULL,
+    id_conductor INT NOT NULL,
+    id_nivel INT NOT NULL,
+    nro_lugar INT NOT NULL,
+    fecha_ingreso DATE NOT NULL
+        CONSTRAINT DF_fecha_ingreso DEFAULT GETDATE(),
+    hora_ingreso TIME NOT NULL,
+    fecha_salida DATE NULL, -- Opcional al ingresar
+    hora_salida TIME NULL,  -- Opcional al ingresar
+    id_fraccion_tiempo INT NOT NULL,
+
+    -- ¡CLAVE PRIMARIA COMPUESTA! (como en el modelo del profesor)
+    -- Identifica de forma única cada ingreso por la combinación de estos atributos.
+    CONSTRAINT PK_registro PRIMARY KEY (
+        patente,
+        id_conductor,
+        id_nivel,
+        nro_lugar,
+        fecha_ingreso,
+        hora_ingreso
+    ),
+
+    -- Claves foráneas
+    CONSTRAINT FK_registro_vehiculo FOREIGN KEY (patente) REFERENCES vehiculo(patente),
+    CONSTRAINT FK_registro_conductor FOREIGN KEY (id_conductor) REFERENCES conductor(id_conductor),
+    CONSTRAINT FK_registro_lugar FOREIGN KEY (id_nivel, nro_lugar) REFERENCES lugar(id_nivel, nro_lugar),
+    CONSTRAINT FK_registro_fraccion_tiempo FOREIGN KEY (id_fraccion_tiempo) REFERENCES fraccion_tiempo(id_fraccion_tiempo),
+
+    -- Restricción: La fecha y hora de salida debe ser >= fecha y hora de ingreso
+    -- Si fecha_salida es igual a fecha_ingreso, entonces hora_salida debe ser >= hora_ingreso
+    CONSTRAINT CHK_fecha_salida_logica CHECK (
+        (fecha_salida IS NULL AND hora_salida IS NULL) OR
+        (fecha_salida > fecha_ingreso) OR
+        (fecha_salida = fecha_ingreso AND hora_salida >= hora_ingreso)
+    )
+);
+GO
+
+-- ======================================================
+-- LOTE DE PRUEBA (Requerido en el enunciado)
+-- ======================================================
+
+-- Insertar Tipos de Vehículo
+INSERT INTO tipo_vehiculo (nombre_tipo_vehiculo) VALUES 
+('Automóvil'),
+('Motocicleta'),
+('Bicicleta'),
+('Camioneta');
+GO
+
+-- Insertar Colores
+INSERT INTO color (nombre_color) VALUES 
+('Rojo'),
+('Negro'),
+('Blanco'),
+('Azul');
+GO
+
+-- Insertar Fracciones de Tiempo
+INSERT INTO fraccion_tiempo (nombre_fraccion_tiempo) VALUES 
+('Hora'),
+('Día'),
+('Semana'),
+('Mes');
+GO
+
+-- Insertar Niveles
+INSERT INTO nivel (nombre_nivel) VALUES 
+('Planta Baja'),
+('Primer Piso'),
+('Subsuelo 1');
+GO
+
+-- Insertar Lugares de Estacionamiento
+-- En Planta Baja (nivel 1), lugares 1-10 para automóviles
+INSERT INTO lugar (nro_lugar, id_nivel, id_tipo_vehiculo) VALUES 
+(1, 1, 1), (2, 1, 1), (3, 1, 1);
+
+-- En Primer Piso (nivel 2), lugares 1-5 para motocicletas
+INSERT INTO lugar (nro_lugar, id_nivel, id_tipo_vehiculo) VALUES 
+(1, 2, 2), (2, 2, 2);
+
+-- En Subsuelo 1 (nivel 3), lugares 1-3 para camionetas
+INSERT INTO lugar (nro_lugar, id_nivel, id_tipo_vehiculo) VALUES 
+(1, 3, 4);
+GO
+
+-- Insertar Conductores
+INSERT INTO conductor (dni, nombre, apellido, fecha_nacimiento, direccion, telefono) VALUES 
+('12345678', 'Ana', 'Gómez', '1990-05-15', 'Calle Falsa 123', '11-1234-5678'),
+('87654321', 'Luis', 'Pérez', '1985-08-22', 'Av. Siempre Viva 742', '11-8765-4321');
+GO
+
+-- Insertar Vehículos
+INSERT INTO vehiculo (patente, id_color, id_tipo_vehiculo) VALUES 
+('ABC123', 1, 1), -- Automóvil Rojo
+('DEF456', 2, 2), -- Motocicleta Negra
+('GHI789', 3, 4); -- Camioneta Blanca
+GO
+
+-- Asociar Conductores con Vehículos (M:N)
+INSERT INTO vehiculo_conductor (id_conductor, patente) VALUES 
+(1, 'ABC123'), -- Ana conduce el auto ABC123
+(1, 'DEF456'), -- Ana también conduce la moto DEF456
+(2, 'GHI789'); -- Luis conduce la camioneta GHI789
+GO
+
+-- Registrar Ingresos (Registros)
+-- Ana ingresa su auto ABC123 al lugar 1 de Planta Baja
+INSERT INTO registro (patente, id_conductor, id_nivel, nro_lugar, fecha_ingreso, hora_ingreso, id_fraccion_tiempo) VALUES 
+('ABC123', 1, 1, 1, '2025-04-05', '10:00:00', 2); -- Estadía por día
+
+-- Luis ingresa su camioneta GHI789 al lugar 1 de Subsuelo 1
+INSERT INTO registro (patente, id_conductor, id_nivel, nro_lugar, fecha_ingreso, hora_ingreso, id_fraccion_tiempo) VALUES 
+('GHI789', 2, 3, 1, DEFAULT, '11:30:00', 3); -- Usa fecha actual, estadía por semana
+GO
+
+-- Registrar Salidas (Actualizaciones)
+UPDATE registro
+SET fecha_salida = '2025-04-05', hora_salida = '18:00:00'
+WHERE patente = 'ABC123' 
+  AND id_conductor = 1 
+  AND id_nivel = 1 
+  AND nro_lugar = 1 
+  AND fecha_ingreso = '2025-04-05' 
+  AND hora_ingreso = '10:00:00';
+GO
+
+-- ======================================================
+-- PRUEBAS DE RESTRICCIONES (Validación requerida)
+-- ======================================================
+
+-- ❌ Prueba 1: DNI con más de 8 caracteres
+-- INSERT INTO conductor (dni, nombre, apellido, fecha_nacimiento, direccion, telefono)
+-- VALUES ('123456789', 'Test', 'Largo', '1990-01-01', 'Calle X', '11-0000-0000'); -- ¡ERROR! Violación de CHK_dni_longitud
+
+-- ❌ Prueba 2: Teléfono duplicado
+-- INSERT INTO conductor (dni, nombre, apellido, fecha_nacimiento, direccion, telefono)
+-- VALUES ('11111111', 'Test', 'Duplicado', '1990-01-01', 'Calle Y', '11-1234-5678'); -- ¡ERROR! Violación de UNQ_telefono_conductor
+
+-- ❌ Prueba 3: Fecha de salida anterior a ingreso
+-- INSERT INTO registro (patente, id_conductor, id_nivel, nro_lugar, fecha_ingreso, hora_ingreso, fecha_salida, hora_salida, id_fraccion_tiempo)
+-- VALUES ('DEF456', 1, 2, 1, '2025-04-05', '15:00:00', '2025-04-05', '14:00:00', 1); -- ¡ERROR! Violación de CHK_fecha_salida_logica
+
+-- ✅ Prueba 4: Fecha y hora de salida NULL (válida al ingresar)
+INSERT INTO registro (patente, id_conductor, id_nivel, nro_lugar, fecha_ingreso, hora_ingreso, id_fraccion_tiempo)
+VALUES ('DEF456', 1, 2, 2, '2025-04-05', '16:00:00', 1); -- ¡OK!
+GO
+
+-- ❌ Prueba 5: Lugar inexistente
+-- INSERT INTO registro (patente, id_conductor, id_nivel, nro_lugar, fecha_ingreso, hora_ingreso, id_fraccion_tiempo)
+-- VALUES ('ABC123', 1, 1, 99, '2025-04-05', '17:00:00', 1); -- ¡ERROR! Violación de FK_registro_lugar
+
+-- ✅ Prueba 6: Mismo conductor, diferentes vehículos (M:N)
+INSERT INTO registro (patente, id_conductor, id_nivel, nro_lugar, fecha_ingreso, hora_ingreso, id_fraccion_tiempo)
+VALUES ('DEF456', 1, 2, 1, '2025-04-05', '17:30:00', 1); -- ¡OK! Ana ingresa su moto a otro lugar
+GO
+
+-- ❌ Prueba 7: Duplicado en PK compuesta de registro
+-- INSERT INTO registro (patente, id_conductor, id_nivel, nro_lugar, fecha_ingreso, hora_ingreso, id_fraccion_tiempo)
+-- VALUES ('ABC123', 1, 1, 1, '2025-04-05', '10:00:00', 2); -- ¡ERROR! Ya existe (PK duplicada)
+GO
+
+-- ======================================================
+-- FIN DEL SCRIPT
+-- ======================================================
+```
